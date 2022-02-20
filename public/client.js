@@ -9,10 +9,10 @@ const scene = new THREE.Scene()
 
 
 
-const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 100)
-camera.position.x = 4
-camera.position.y = 2
-camera.position.z = 4
+const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.01, 100)
+camera.position.x = 1
+camera.position.y = 1
+camera.position.z = 1
 
 const renderer = new THREE.WebGLRenderer()
 renderer.setSize(window.innerWidth, window.innerHeight)
@@ -20,62 +20,7 @@ document.body.appendChild(renderer.domElement)
 
 const controls = new OrbitControls(camera, renderer.domElement)
 
-const geometry = new THREE.BoxGeometry(0.2,0.2,0.4)
-const material = new THREE.MeshStandardMaterial({
-    color: 0x94D0FF,
-    // wireframe: true,
-    opacity: 0.5,
-    transparent: true,
-    roughness: 1
-})
-const material2 = new THREE.MeshStandardMaterial({
-    color: 0x000,
-    wireframe: true,
-    // opacity: 0.5,
-    // transparent: true,
-    // roughness: 1
-})
-const cube = new THREE.Mesh(geometry, material)
-const cube2 = new THREE.Mesh(geometry, material2)
-cube.position.x = 4
-cube.position.y = 0.1
-cube.position.z = 1.8
-cube.rotation.y = Math.PI / 2;
-cube2.position.x = 4
-cube2.position.y = 0.1
-cube2.position.z = 1.8
-cube2.rotation.y = Math.PI / 2;
-scene.add(cube)
-scene.add(cube2)
 
-
-const geometry6 = new THREE.BoxGeometry(0.2,0.2,0.4)
-const material6 = new THREE.MeshStandardMaterial({
-    color: 0x966BFF, //FFDE8B
-    opacity: 0.5,
-    transparent: true,
-    roughness: 1
-})
-const cube3 = new THREE.Mesh(geometry6, material6)
-const cube4 = new THREE.Mesh(geometry6, material2)
-cube3.visible = false;
-cube4.visible = false;
-scene.add(cube3)
-scene.add(cube4)
-
-const geometry7 = new THREE.BoxGeometry(0.2,0.2,0.4)
-const material7 = new THREE.MeshStandardMaterial({
-    color: 0xFFDE8B, //
-    opacity: 0.5,
-    transparent: true,
-    roughness: 1
-})
-const cube5 = new THREE.Mesh(geometry7, material7)
-const cube6 = new THREE.Mesh(geometry7, material2)
-cube5.visible = false;
-cube6.visible = false;
-scene.add(cube5)
-scene.add(cube6)
 
 
 
@@ -114,75 +59,160 @@ window.addEventListener(
 const stats = Stats()
 document.body.appendChild(stats.dom)
 
-const gui = new GUI()
-const cubeFolder = gui.addFolder('Cube')
-cubeFolder.add(cube.scale, 'x', -5, 5)
-cubeFolder.add(cube.scale, 'y', -5, 5)
-cubeFolder.add(cube.scale, 'z', -5, 5)
-cubeFolder.open()
-const cameraFolder = gui.addFolder('Camera')
-cameraFolder.add(camera.position, 'z', 0, 10)
-cameraFolder.open()
+// const gui = new GUI()
+// const cubeFolder = gui.addFolder('Cube')
+// cubeFolder.add(cube.scale, 'x', -5, 5)
+// cubeFolder.add(cube.scale, 'y', -5, 5)
+// cubeFolder.add(cube.scale, 'z', -5, 5)
+// cubeFolder.open()
+// const cameraFolder = gui.addFolder('Camera')
+// cameraFolder.add(camera.position, 'z', 0, 10)
+// cameraFolder.open()
 
 
-const geometry2 = new THREE.PlaneGeometry(10, 10); // width, height, no depth for plane
-var texture = new THREE.TextureLoader().load(
-    "./img.png"
-); // remove color = ...
-
-const material3 = new THREE.MeshBasicMaterial({
+const floor_geom = new THREE.PlaneGeometry(2, 2); // width, height, no depth for plane
+var floor_tex = new THREE.TextureLoader().load(
+    "./boston-55-8.png"
+);
+const floor_mat = new THREE.MeshBasicMaterial({
     // color: 0xeba6f5,
-    side: THREE.DoubleSide,
-    map: texture // texture as a map for material
+    side: THREE.FrontSide,
+    map: floor_tex // texture as a map for material
 });
-const plane = new THREE.Mesh(geometry2, material3); // mesh takes just two parameters
-plane.position.y = 0;
-plane.rotation.x = Math.PI / 2;
+const floor = new THREE.Mesh(floor_geom, floor_mat); // mesh takes just two parameters
+floor.position.x = 0;
+floor.position.y = 0;
+floor.position.z = 0;
+floor.rotation.x = -Math.PI / 2;
+scene.add(floor);
 
-scene.add(plane);
+const SUBSTEPS = 20;
 
-var transitioned = false;
+const car_geom = new THREE.BoxGeometry(0.1,0.05,0.05)
+const car_mat1 = new THREE.MeshStandardMaterial({
+    color: 0x94D0FF,
+    // wireframe: true,
+    opacity: 0.5,
+    transparent: true,
+    roughness: 1
+})
+const car_mat2 = new THREE.MeshStandardMaterial({
+    color: 0xFF6AD5,
+    // wireframe: true,
+    opacity: 0.5,
+    transparent: true,
+    roughness: 1
+})
+const ped_geom = new THREE.CylinderGeometry(0.025,0.025,0.05)
+const ped_mat1 = new THREE.MeshStandardMaterial({
+    color: 0x966BFF,
+    // wireframe: true,
+    opacity: 0.5,
+    transparent: true,
+    roughness: 1
+})
+const ped_mat2 = new THREE.MeshStandardMaterial({
+    color: 0xFFDE8B,
+    // wireframe: true,
+    opacity: 0.5,
+    transparent: true,
+    roughness: 1
+})
+
+var objects = [];
+
+const loader = new THREE.FileLoader();
+loader.setResponseType("json")
+loader.load(
+    // resource URL
+    'data-55-8.json',
+
+    // onLoad callback
+    function ( data ) {
+        // output the text to the console
+        console.log( data );
+        for (const idx in data) {
+
+            let obj;
+            if (data[idx]["type"] == "car") {
+                obj = new THREE.Mesh(car_geom, car_mat1);
+            } else if(data[idx]["type"] == "pedestrian") {
+                obj = new THREE.Mesh(ped_geom, ped_mat1);
+            } else {
+                console.log("obj type not recognized:"+data[idx]["type"]);
+            }
+
+            let steps_x = data[idx]["inputs_x"].concat(data[idx]["outputs_x"]);
+            let steps_y = data[idx]["inputs_y"].concat(data[idx]["outputs_y"]);
+            if (idx == 2) { // weird special case with error
+                steps_x = steps_x.slice(0,-4);
+                steps_y = steps_y.slice(0,-4);
+            }
+
+            obj.position.set(data[idx]["inputs_x"][0], 0.025, -data[idx]["inputs_y"][0]);
+            obj.rotation.set(0,data[idx]["inputs_yaw"][0],0)
+            scene.add(obj);
+            objects.push({
+                kind: data[idx]["type"],
+                handle: obj,
+                steps_x_gt: steps_x,
+                steps_y_gt: steps_y,
+                steps_yaw_gt: data[idx]["inputs_yaw"].concat(data[idx]["outputs_yaw"]),
+                in_steps: data[idx]["inputs_x"].length
+            })
+
+        }
+    },
+    // onProgress callback
+    function ( xhr ) {
+        console.log( (xhr.loaded / xhr.total * 100) + '% loaded' );
+    },
+    // onError callback
+    function ( err ) {
+        console.error( 'An error happened' );
+    }
+);
+
+let step = 0;
+
+function moveObjs(){
+    for (const objIdx in objects) {
+        let o = objects[objIdx];
+        let majorStep = Math.floor(step/SUBSTEPS);
+        let subStep = step % SUBSTEPS;
+        // if (majorStep >= o.steps_x_gt.length) continue; // ignore objs at the end of their lifespan
+        let current_x_major = o.steps_x_gt[majorStep];
+        let current_y_major = -o.steps_y_gt[majorStep];
+        let current_yaw_major = o.steps_yaw_gt[majorStep];
+        let next_x_major = o.steps_x_gt[majorStep+1];
+        let next_y_major = -o.steps_y_gt[majorStep+1];
+        let next_yaw_major = o.steps_yaw_gt[majorStep+1];
+        let diff_x = (next_x_major - current_x_major)  * (subStep/SUBSTEPS);
+        let diff_y = (next_y_major - current_y_major) * (subStep/SUBSTEPS);
+        let diff_yaw = (next_yaw_major - current_yaw_major) * (subStep/SUBSTEPS);
+        o.handle.position.set(current_x_major+diff_x,0.025,current_y_major+diff_y);
+        o.handle.rotation.set(0,current_yaw_major+diff_yaw,0)
+        if (majorStep == o.in_steps && subStep == 0) {
+            let color;
+            if (o.kind =="car") {
+                color = 0xFF6AD5;
+            }
+            else {
+                color = 0xFFDE8B;
+            }
+            o.handle.material.color.setHex(color);
+        }
+    }
+}
+
 function animate() {
     requestAnimationFrame(animate)
 
-    if (cube.position.x > 3) {
-        cube.position.x -= 0.01
-        cube.position.z -= 0.0005
-        cube2.position.x -= 0.01
-        cube2.position.z -= 0.0005
-
-    } else {
-        if (!transitioned) {
-            cube.visible = false;
-            cube2.visible = false;
-            cube3.visible = true;
-            cube4.visible = true;
-            cube5.visible = true;
-            cube6.visible = true;
-            transitioned = true;
-            cube3.position.copy(cube.position);
-            cube3.rotation.copy( cube.rotation);
-            cube4.position.copy(cube.position);
-            cube4.rotation.copy( cube.rotation);
-            cube5.position.copy( cube.position);
-            cube5.rotation.copy( cube.rotation);
-            cube6.position.copy( cube.position);
-            cube6.rotation.copy( cube.rotation);
-        }
-        cube3.position.x -= 0.01
-        cube3.position.z -= 0.0005
-        cube4.position.x -= 0.01
-        cube4.position.z -= 0.0005
-
-        cube5.position.x -= 0.015
-        cube5.position.z -= 0.0007
-        cube6.position.x -= 0.015
-        cube6.position.z -= 0.0007
-
-    }
-    controls.update()
-    render()
-    stats.update()
+    moveObjs();
+    controls.update();
+    render();
+    stats.update();
+    step+=1;
 }
 
 function render() {
