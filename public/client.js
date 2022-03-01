@@ -33,6 +33,7 @@ renderer.setSize(window.innerWidth, window.innerHeight)
 renderer.setClearColor( 0xffffff, 1);
 document.body.appendChild(renderer.domElement)
 
+
 const controls = new OrbitControls(camera, renderer.domElement)
 
 
@@ -64,6 +65,9 @@ window.addEventListener(
 
 const stats = Stats()
 document.body.appendChild(stats.dom)
+
+const text = document.getElementById("info");
+const labels = ["Ground Truth Trajectory\n(both turn)", "AutoBots Prediction 1\n(both turn)", "AutoBots Prediction 2\n(left yields)", "AutoBots Prediction 3\n(possible danger)", "AutoBots Prediction 4\n(right yields)"]
 
 const floor_geom = new THREE.PlaneGeometry(2, 2) // width, height, no depth for plane
 var floor_tex = new THREE.TextureLoader().load(
@@ -353,8 +357,10 @@ function moveObjsSeq() {
 
             if (show_gt) {
                 show_gt = false;
+                text.innerText = labels[1];
             } else if (prediction < objects[0].predictions.length-1){
                 prediction+=1;
+                text.innerText = labels[prediction+1];
                 console.log(prediction);
                 if (prediction == 4) return true; //TODO: this is temporary
             } else {
@@ -376,6 +382,7 @@ var matrix = new THREE.Matrix4();
 let lookat = floor.position.clone();
 lookat.z+=.25;
 
+text.innerText = labels[0];
 
 function animate() {
     requestAnimationFrame(animate)
@@ -391,6 +398,7 @@ function animate() {
         lastStep = -1;
         show_gt = true;
         cleanWaypointsAndReset();
+        text.innerText = labels[0];
         console.log("done resetting scene");
     }
     controls.update()
