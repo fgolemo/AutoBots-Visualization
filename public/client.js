@@ -1,3 +1,12 @@
+// This is a little rendering script for NuScenes and other traffic datasets.
+// It's not polished at all.
+// This is not intended for reuse and so the code is a bit of a mess.
+// If you're interested in using this yourself,
+// please reach out to Florian Golemo, fgolemo@gmail.com
+// I'd be happy to make this into a standalone visualizer.
+// I just don't know if anybody cares.
+
+
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls'
 import Stats from 'three/examples/jsm/libs/stats.module'
@@ -5,10 +14,9 @@ import { GUI } from 'three/examples/jsm/libs/dat.gui.module'
 import { MTLLoader } from 'three/examples/jsm/loaders/MTLLoader'
 import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader'
 import { Vector3 } from 'three'
-import * as wham from './whammy.js';
+// import * as wham from './whammy.js';
 
 
-let encoder = new Whammy.Video(30);
 
 const scene = new THREE.Scene()
 
@@ -22,6 +30,7 @@ camera.position.z = .8
 
 const renderer = new THREE.WebGLRenderer()
 renderer.setSize(window.innerWidth, window.innerHeight)
+renderer.setClearColor( 0xffffff, 1);
 document.body.appendChild(renderer.domElement)
 
 const controls = new OrbitControls(camera, renderer.domElement)
@@ -56,17 +65,6 @@ window.addEventListener(
 const stats = Stats()
 document.body.appendChild(stats.dom)
 
-// const gui = new GUI()
-// const cubeFolder = gui.addFolder('Cube')
-// cubeFolder.add(cube.scale, 'x', -5, 5)
-// cubeFolder.add(cube.scale, 'y', -5, 5)
-// cubeFolder.add(cube.scale, 'z', -5, 5)
-// cubeFolder.open()
-// const cameraFolder = gui.addFolder('Camera')
-// cameraFolder.add(camera.position, 'z', 0, 10)
-// cameraFolder.open()
-
-
 const floor_geom = new THREE.PlaneGeometry(2, 2) // width, height, no depth for plane
 var floor_tex = new THREE.TextureLoader().load(
     './boston-55-8.png',
@@ -81,6 +79,7 @@ floor.position.x = 0
 floor.position.y = 0
 floor.position.z = 0
 floor.rotation.x = -Math.PI / 2
+
 scene.add(floor)
 
 const SUBSTEPS = 20
@@ -110,32 +109,31 @@ const line_mat = new THREE.LineBasicMaterial( { color: 0xffffff,linewidth: 5 } )
 
 
 var objects = []
-const _offset = new Vector3();
 let optimus;
-new MTLLoader()
-    .setMaterialOptions({
-        invertTrProperty: 1,
-    })
-    .load( 'optimus-truck-v5-half.obj.mtl', function ( materials ) {
-        materials.preload();
-        new OBJLoader()
-            .setMaterials( materials )
-            .load( 'optimus-truck-v5-half.obj', object => {
-                object.position.set(0,0,0);
-                object.scale.set(0.00010,0.00010,0.00010);
-
-                object.children[0].geometry.rotateY(Math.PI/2);
-
-                object.children[0].geometry.center();
-                for (const mIdx in object.children[0].material){
-                    object.children[0].material[mIdx].opacity = 0.8
-                    object.children[0].material[mIdx].transparent= true
-                }
-                optimus = object;
-
-                loadTraj();
-            }, onProgress );
-    } );
+// not using this in production bc very slow
+// new MTLLoader()
+//     .setMaterialOptions({
+//         invertTrProperty: 1,
+//     })
+//     .load( 'optimus-truck-v5-half.obj.mtl', function ( materials ) {
+//         materials.preload();
+//         new OBJLoader()
+//             .setMaterials( materials )
+//             .load( 'optimus-truck-v5-half.obj', object => {
+//                 object.position.set(0,0,0);
+//                 object.scale.set(0.00010,0.00010,0.00010);
+//
+//                 object.children[0].geometry.rotateY(Math.PI/2);
+//
+//                 object.children[0].geometry.center();
+//                 for (const mIdx in object.children[0].material){
+//                     object.children[0].material[mIdx].opacity = 0.8
+//                     object.children[0].material[mIdx].transparent= true
+//                 }
+//                 optimus = object;
+//                 loadTraj();
+//             }, onProgress );
+//     } );
 
 function loadTraj() {
     const loader = new THREE.FileLoader()
@@ -154,7 +152,7 @@ function loadTraj() {
                 let obj_car
                 if (data[idx]['type'] == 'car') {
                     obj_box = new THREE.Mesh(car_geom, car_mat)
-                    obj_car = optimus.clone();
+                    // obj_car = optimus.clone();
                 } else if (data[idx]['type'] == 'pedestrian') {
                     obj_box = new THREE.Mesh(ped_geom, ped_mat)
                 } else {
@@ -210,12 +208,13 @@ function loadTraj() {
         },
         // onError callback
         function(err) {
-            console.error('An error happened')
+            console.error('IDK WTF happened here')
+            console.dir(err)
         },
     )
 }
 
-
+loadTraj();
 
 let step = 0;
 let prediction = 0;
@@ -228,93 +227,24 @@ const MOVE_THRESHOLD = 0.02;
 
 let show_gt = true;
 
-function moveObjsGtWireframe() {
-    let dones = 0;
+function cleanWaypointsAndReset() {
     for (const objIdx in objects) {
         let o = objects[objIdx]
-        let majorStep = Math.floor(step / SUBSTEPS)
-        let subStep = step % SUBSTEPS
-        if (majorStep >= o.steps_x_gt.length) dones+=1;
-        let current_x_major_gt = o.steps_x_gt[majorStep]
-        let current_y_major_gt = -o.steps_y_gt[majorStep]
-        let current_yaw_major_gt = o.steps_yaw_gt[majorStep]
-        let next_x_major_gt = o.steps_x_gt[majorStep + 1]
-        let next_y_major_gt = -o.steps_y_gt[majorStep + 1]
-        let next_yaw_major_gt = o.steps_yaw_gt[majorStep + 1]
-        let diff_x_gt = (next_x_major_gt - current_x_major_gt) * (subStep / SUBSTEPS)
-        let diff_y_gt = (next_y_major_gt - current_y_major_gt) * (subStep / SUBSTEPS)
-        let diff_yaw_gt = (next_yaw_major_gt - current_yaw_major_gt) * (subStep / SUBSTEPS)
-        if ((next_x_major_gt - current_x_major_gt) < MOVE_THRESHOLD && (next_y_major_gt - current_y_major_gt) < MOVE_THRESHOLD) {
-            diff_yaw_gt = 0;
+        for (const wIdx in o.waypoints) {
+            scene.remove(o.waypoints[wIdx]);
         }
-
-        let pos_gt = new THREE.Vector3(current_x_major_gt + diff_x_gt, 0.025, current_y_major_gt + diff_y_gt)
-        let rot_gt = current_yaw_major_gt + diff_yaw_gt
-        let pos_pred, rot_pred
-
-        if (majorStep < o.in_steps) {
-            pos_pred = pos_gt
-            rot_pred = rot_gt
-        } else {
-            let pred = o.predictions[prediction]
-            let current_x_major_p = pred['x'][majorStep - o.in_steps]
-            let current_y_major_p = -pred['y'][majorStep - o.in_steps]
-            let current_yaw_major_p = pred['yaw'][majorStep - o.in_steps]
-            let next_x_major_p = pred['x'][majorStep - o.in_steps + 1]
-            let next_y_major_p = -pred['y'][majorStep - o.in_steps + 1]
-            let next_yaw_major_p = pred['yaw'][majorStep - o.in_steps + 1]
-            let diff_x_p = (next_x_major_p - current_x_major_p) * (subStep / SUBSTEPS)
-            let diff_y_p = (next_y_major_p - current_y_major_p) * (subStep / SUBSTEPS)
-            let diff_yaw_p = (next_yaw_major_p - current_yaw_major_p) * (subStep / SUBSTEPS)
-            if ((next_x_major_p - current_x_major_p) < MOVE_THRESHOLD && (next_y_major_p - current_y_major_p) < MOVE_THRESHOLD) {
-                diff_yaw_p = 0;
-            }
-
-            pos_pred = new THREE.Vector3(current_x_major_p + diff_x_p, 0.025, current_y_major_p + diff_y_p)
-            rot_pred = current_yaw_major_p + diff_yaw_p
+        for (const wpIdx in o.waypoint_lines) {
+            scene.remove(o.waypoint_lines[wpIdx]);
         }
-
-
-        o.handle_gt.position.copy(pos_gt)
-        o.handle_gt.rotation.set(0, rot_gt, 0)
-
-        o.handle_pred.position.copy(pos_pred)
-        o.handle_pred.rotation.set(0, rot_pred, 0)
-
-        if (majorStep == o.in_steps && subStep == 0) {
-            let color
-            if (o.kind == 'car') {
-                color = 0xFF6AD5
-            } else {
-                color = 0xFFDE8B
-            }
-            o.handle_pred.material.color.setHex(color)
-        }
-    }
-    if (dones == objects.length && objects.length > 0) {
-        if (lastStep == -1) {
-            lastStep = step;
-        }
-        else if (step == lastStep + 20 && prediction < objects[0].predictions.length-1) {
-            step = -1;
-            prediction+=1;
-            lastStep = -1;
-            for (const objIdx in objects) {
-                let o = objects[objIdx]
-                let color
-                if (o.kind == 'car') {
-                    color = 0x94D0FF
-                } else {
-                    color = 0x966BFF
-                }
-                o.handle_pred.material.color.setHex(color)
-            }
-        }
+        o.waypoints = [];
+        o.waypoint_lines = [];
+        o.handle.material.color.setHex(color_in)
     }
 
 }
 
 function moveObjsSeq() {
+
     let dones = 0;
     for (const objIdx in objects) {
         let o = objects[objIdx]
@@ -397,19 +327,20 @@ function moveObjsSeq() {
 
         if (majorStep == o.in_steps && subStep == 0) {
             let color
-            if (o.kind == 'car' && !show_gt) {
-                o.handle_car.position.copy(o.handle.position)
-                o.handle_car.rotation.copy(o.handle.rotation)
-                scene.remove(o.handle)
-                o.handle = o.handle_car
-                scene.add(o.handle)
-                // color = 0xFF6AD5
-            } else {
+            // if (o.kind == 'car' && !show_gt) {
+            //     // o.handle_car.position.copy(o.handle.position)
+            //     // o.handle_car.rotation.copy(o.handle.rotation)
+            //     // scene.remove(o.handle)
+            //     // o.handle = o.handle_car
+            //     // scene.add(o.handle)
+            //     // color = 0xFF6AD5
+            //
+            // } else {
                 // color = 0xFFDE8B
-                if (show_gt) color = color_out;
-                else color = color_pred
-                o.handle.material.color.setHex(color);
-            }
+            if (show_gt) color = color_out;
+            else color = color_pred
+            o.handle.material.color.setHex(color);
+            // }
 
         }
     }
@@ -431,27 +362,7 @@ function moveObjsSeq() {
             }
             step = -1;
             lastStep = -1;
-            console.log("removing waypoints");
-            for (const objIdx in objects) {
-                let o = objects[objIdx]
-                let color;
-                for (const wIdx in o.waypoints) {
-                    scene.remove(o.waypoints[wIdx]);
-                }
-                for (const wpIdx in o.waypoint_lines) {
-                    scene.remove(o.waypoint_lines[wpIdx]);
-                }
-                o.waypoints = [];
-                o.waypoint_lines = [];
-                if (o.kind == 'car') {
-                    scene.remove(o.handle)
-                    o.handle = o.handle_box
-                    scene.add(o.handle)
-                } else {
-                    // is pedestrian
-                }
-                o.handle.material.color.setHex(color_in)
-            }
+            cleanWaypointsAndReset();
         }
     }
     return false;
@@ -459,45 +370,28 @@ function moveObjsSeq() {
 }
 
 
-const onProgress = function ( xhr ) {
-
-    if ( xhr.lengthComputable ) {
-
-        const percentComplete = xhr.loaded / xhr.total * 100;
-        console.log( Math.round( percentComplete, 2 ) + '% loaded' );
-
-    }
-
-};
-
 var period = 12000; // rotation time in seconds
-var clock = new THREE.Clock();
+// var clock = new THREE.Clock();
 var matrix = new THREE.Matrix4();
 let lookat = floor.position.clone();
 lookat.z+=.25;
 
-function exportVid(x) {
-
-    const link = document.createElement( 'a' );
-    link.href = URL.createObjectURL( x );
-    link.download = 'animation.webm';
-    link.dispatchEvent( new MouseEvent( 'click' ) );
-}
 
 function animate() {
     requestAnimationFrame(animate)
 
-    let dt = clock.getDelta();
-    let all_done = moveObjsSeq(dt);
+    let all_done = moveObjsSeq();
     if (all_done) {
-    //     capturer.stop();
-    //     capturer.save();
-        console.log("encoding start");
-        encoder.compile(false, function (output) {
-            console.log("encoding done");
-            exportVid(output);
-        });
-
+        camera.position.x = .8
+        camera.position.y = .85
+        camera.position.z = .8
+        camera.lookAt(lookat);
+        step = 0;
+        prediction = 0;
+        lastStep = -1;
+        show_gt = true;
+        cleanWaypointsAndReset();
+        console.log("done resetting scene");
     }
     controls.update()
 
@@ -514,7 +408,6 @@ function animate() {
     camera.lookAt(lookat);
     render()
 
-    encoder.add(renderer.domElement.toDataURL('image/webp'));
     stats.update()
     step += 1;
 
